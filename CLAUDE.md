@@ -8,6 +8,10 @@
 - Never commit sensitive or personal information about me or my family.
 
 ## Workflow
-- Pushing to `main` deploys the live site (uscitizen.nsingh.phd) right away.
-  Show screenshots and ask before pushing to `main`.
+- Do each piece of work on its own branch (no "/" in the name) and push only that branch.
+  Cloudflare builds a preview for every branch; share screenshots when the work is ready.
+- Merge into `dev` and `main` only when I explicitly ask. Either I run
+  `make merge-dev-to-main BRANCH=<branch>` locally, or I ask you to merge; then follow
+  the same steps as `scripts/merge_dev_to_main.sh` (work branch -> `dev` -> `main`, then sync `dev`).
+- `main` deploys the live site (uscitizen.nsingh.phd) right away.
 - Answers that change after elections live in `data.js`; update `lastChecked` when you verify them.
