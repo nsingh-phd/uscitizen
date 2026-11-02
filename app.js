@@ -1,5 +1,5 @@
 /*
- * Citizen Ready: US naturalization civics test practice.
+ * US Citizen: practice for the U.S. naturalization test (civics, reading, writing).
  * Plain JS, no dependencies. Everything is stored in localStorage on the
  * viewer's device; nothing is sent anywhere.
  */
@@ -117,16 +117,16 @@
     remove(key) { try { localStorage.removeItem(key); } catch (e) { /* storage blocked */ } },
   };
 
-  const settings = Object.assign({ version: "2025", only65: false, profile: "Me", listen: false }, store.get("cr:settings", {}));
+  const settings = Object.assign({ version: "2025", only65: false, profile: "Me", listen: false }, store.get("usc:settings", {}));
   if (!DATA[settings.version]) settings.version = "2025";
-  let profiles = store.get("cr:profiles", ["Me"]);
+  let profiles = store.get("usc:profiles", ["Me"]);
   if (!Array.isArray(profiles) || !profiles.length) profiles = ["Me"];
   if (!profiles.includes(settings.profile)) settings.profile = profiles[0];
 
-  const saveSettings = () => store.set("cr:settings", settings);
-  const progressKey = () => `cr:progress:${settings.profile}:${settings.version}`;
-  const historyKey = () => `cr:tests:${settings.profile}:${settings.version}`;
-  const localKey = () => `cr:local:${settings.profile}`;
+  const saveSettings = () => store.set("usc:settings", settings);
+  const progressKey = () => `usc:progress:${settings.profile}:${settings.version}`;
+  const historyKey = () => `usc:tests:${settings.profile}:${settings.version}`;
+  const localKey = () => `usc:local:${settings.profile}`;
 
   let progress = store.get(progressKey(), {});
   let mine = store.get(localKey(), {});
@@ -871,7 +871,7 @@
 
   const EN = window.ENGLISH_DATA;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
-  const engKey = () => `cr:english:${settings.profile}`;
+  const engKey = () => `usc:english:${settings.profile}`;
   const eng = { mode: "reading", queues: {}, round: {}, rec: null, listening: false, heard: "", micMsg: "" };
 
   // Normalize a sentence into comparable word tokens ("D.C." -> "dc", "50" -> "fifty").
@@ -1326,7 +1326,7 @@
 
   function addProfile(name) {
     if (!profiles.includes(name)) profiles.push(name);
-    store.set("cr:profiles", profiles);
+    store.set("usc:profiles", profiles);
     switchProfile(name);
   }
   $("#profile-form").addEventListener("submit", (e) => {
