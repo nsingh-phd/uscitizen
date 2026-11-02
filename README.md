@@ -48,7 +48,8 @@ app.js            App logic: routing, flashcards, mock interview, study guide, E
 data.js           Civics questions and answers (2025 and 2008 versions)
 english.js        Reading and writing vocabulary and practice sentences
 fonts/            Sora (SIL Open Font License, see fonts/OFL.txt)
-scripts/          Maintenance scripts
+scripts/          Maintenance and publishing scripts
+Makefile          `make merge-dev-to-main` shortcut
 docs/             Screenshots and the social preview image
 _headers          Cloudflare Pages response headers
 ```
@@ -74,7 +75,17 @@ Then open http://localhost:8000/.
 
 ## Deployment
 
-Hosted on Cloudflare Pages, connected to this repo. Every push to `main` deploys to production; other branches get preview URLs. No build command or output directory is needed.
+Hosted on Cloudflare Pages, connected to this repo. No build command or output directory is needed.
+
+- `main` is production: every push deploys to uscitizen.nsingh.phd.
+- `dev` and work branches get Cloudflare preview URLs.
+- Work happens on its own branch, then is published with:
+
+  ```bash
+  make merge-dev-to-main BRANCH=<work-branch>
+  ```
+
+  This merges the work branch into `dev`, merges `dev` into `main`, pushes both, and leaves them in sync. Without `BRANCH`, it publishes whatever is already on `dev`.
 
 ## License
 
