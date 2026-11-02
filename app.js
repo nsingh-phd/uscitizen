@@ -222,13 +222,13 @@
     pickVoice();
     if (window.speechSynthesis.addEventListener) window.speechSynthesis.addEventListener("voiceschanged", pickVoice);
   }
-  function speak(text, onEnd) {
+  function speak(text, onEnd, rate) {
     if (!canSpeak) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     if (voice) u.voice = voice;
     u.lang = "en-US";
-    u.rate = 0.92;
+    u.rate = rate || 0.92;
     if (onEnd) u.onend = onEnd;
     window.speechSynthesis.speak(u);
   }
@@ -305,8 +305,9 @@
 
   const VIEWS = [
     { id: "home", label: "Home", icon: "home" },
-    { id: "cards", label: "Flashcards", icon: "cards" },
+    { id: "cards", label: "Flashcards", short: "Cards", icon: "cards" },
     { id: "test", label: "Mock interview", short: "Interview", icon: "mic" },
+    { id: "english", label: "Reading & writing", short: "English", icon: "pen" },
     { id: "study", label: "Study guide", short: "Study", icon: "book" },
     { id: "me", label: "My info", icon: "user" },
   ];
@@ -332,6 +333,7 @@
   const RENDER = {};
   function show(id, opts) {
     stopSpeaking();
+    stopListening();
     current = id;
     markNav(id);
     const view = $("#view");
@@ -428,6 +430,12 @@
           <span class="action-sub">All ${qs.length} questions</span>
           ${ic("arrow", "action-go")}
         </a>
+        <a class="action action-english" href="#english">
+          <span class="action-art" aria-hidden="true"><span class="abc">Aa</span><span class="pencil">${ic("pen")}</span></span>
+          <span class="action-title">Reading &amp; writing</span>
+          <span class="action-sub">English test practice</span>
+          ${ic("arrow", "action-go")}
+        </a>
       </section>
 
       <section class="block">
@@ -446,8 +454,8 @@
         </div>
         <div class="parts">
           <div class="part">${ic("chat")}<strong>Speaking</strong><span>During the interview</span></div>
-          <div class="part">${ic("book")}<strong>Reading</strong><span>1 of 3 sentences</span></div>
-          <div class="part">${ic("pen")}<strong>Writing</strong><span>1 of 3 sentences</span></div>
+          <a class="part part-link" href="#english" data-action="eng-open" data-mode="reading">${ic("book")}<strong>Reading</strong><span>1 of 3 sentences</span></a>
+          <a class="part part-link" href="#english" data-action="eng-open" data-mode="writing">${ic("pen")}<strong>Writing</strong><span>1 of 3 sentences</span></a>
           <div class="part part-hl">${ic("capitol")}<strong>Civics</strong><span>${r.pass} of ${r.max} correct</span></div>
         </div>
         <div class="facts">
@@ -859,6 +867,268 @@
       : `<div class="empty"><span class="empty-art">${ic("search")}</span><h2>No matches</h2><p>Try a different word.</p></div>`;
   }
 
+  /* ================= English: reading & writing ================= */
+
+  const EN = window.ENGLISH_DATA;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  const engKey = () => `cr:english:${settings.profile}`;
+  const eng = { mode: "reading", queues: {}, round: {}, rec: null, listening: false, heard: "", micMsg: "" };
+
+  // Normalize a sentence into comparable word tokens ("D.C." -> "dc", "50" -> "fifty").
+  function engTokens(s) {
+    const out = [];
+    s.toLowerCase().replace(/[’'.]/g, "").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean).forEach((t) => {
+      if (t === "50") out.push("fifty");
+      else if (t === "100") out.push("one", "hundred");
+      else out.push(t);
+    });
+    return out;
+  }
+
+  // Longest-common-subsequence alignment: which tokens of a and b match.
+  function lcsMatch(a, b) {
+    const n = a.length; const m = b.length;
+    const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+    const ma = new Array(n).fill(false); const mb = new Array(m).fill(false);
+    let i = 0; let j = 0;
+    while (i < n && j < m) {
+      if (a[i] === b[j]) { ma[i] = true; mb[j] = true; i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) i++; else j++;
+    }
+    return [ma, mb];
+  }
+
+  // Render display words, marking each one by whether all its tokens matched.
+  function markedWords(text, matched, okCls, badCls) {
+    let k = 0;
+    return text.split(/\s+/).filter(Boolean).map((w) => {
+      const n = engTokens(w).length;
+      const ok = matched ? matched.slice(k, k + n).every(Boolean) : null;
+      k += n;
+      const cls = ok === null ? "" : ok ? okCls : badCls;
+      return `<span class="w ${cls}">${esc(w)}</span>`;
+    }).join(" ");
+  }
+
+  function engStats() { return Object.assign({ r: { done: 0, passed: 0 }, w: { done: 0, passed: 0 } }, store.get(engKey(), {})); }
+
+  function nextSentence(mode) {
+    const list = mode === "reading" ? EN.reading : EN.writing;
+    if (!eng.queues[mode] || !eng.queues[mode].length) eng.queues[mode] = shuffle(list);
+    return eng.queues[mode].pop();
+  }
+  const freshWrite = () => ({ typed: "", checked: false, correct: null, first: null, peek: !canSpeak, played: false });
+  function newRound(mode) {
+    eng.round[mode] = { items: [nextSentence(mode)], results: [], status: "run", w: freshWrite() };
+    eng.heard = ""; eng.micMsg = "";
+  }
+  const curRound = () => { if (!eng.round[eng.mode]) newRound(eng.mode); return eng.round[eng.mode]; };
+  const curSentence = () => { const r = curRound(); return r.items[r.items.length - 1]; };
+
+  function engResult(correct) {
+    const r = curRound();
+    r.results.push(correct);
+    stopListening();
+    stopSpeaking();
+    if (correct) r.status = "pass";
+    else if (r.results.length >= 3) r.status = "fail";
+    else { r.items.push(nextSentence(eng.mode)); r.w = freshWrite(); eng.heard = ""; eng.micMsg = ""; }
+    if (r.status !== "run") {
+      const s = engStats();
+      const k = eng.mode === "reading" ? "r" : "w";
+      s[k].done++;
+      if (r.status === "pass") s[k].passed++;
+      store.set(engKey(), s);
+      if (r.status === "pass") confetti();
+    }
+    renderEngBody();
+  }
+
+  function stopListening() {
+    if (eng.rec) { try { eng.rec.abort(); } catch (e) { /* ignore */ } }
+    eng.rec = null;
+    eng.listening = false;
+  }
+
+  function toggleListening() {
+    if (!SR) return;
+    if (eng.listening) { if (eng.rec) eng.rec.stop(); return; }
+    stopSpeaking();
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    eng.rec = rec; eng.listening = true; eng.heard = ""; eng.micMsg = "";
+    rec.onresult = (e) => {
+      let t = "";
+      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      eng.heard = t;
+      renderEngBody();
+    };
+    rec.onerror = (e) => {
+      eng.micMsg = e.error === "not-allowed" || e.error === "service-not-allowed"
+        ? "Microphone access is blocked. Allow it in your browser, or grade yourself below."
+        : e.error === "no-speech" ? "We didn't hear anything. Try again." : "Speech check isn't available right now. Grade yourself below.";
+    };
+    rec.onend = () => { eng.listening = false; eng.rec = null; renderEngBody(); };
+    try { rec.start(); } catch (err) { eng.listening = false; eng.rec = null; }
+    renderEngBody();
+  }
+
+  RENDER.english = (view) => {
+    const tabs = [["reading", "Reading", "book"], ["writing", "Writing", "pen"], ["words", "Word lists", "sparkle"]];
+    view.innerHTML = `
+      <div class="page-head">
+        <h1 class="page-title">${ic("pen")}Reading &amp; writing</h1>
+        <div class="eng-stats" id="eng-stats"></div>
+      </div>
+      <div class="seg seg-wide" role="tablist" aria-label="English test practice">
+        ${tabs.map(([id, label, icon]) => `<button type="button" role="tab" aria-selected="${eng.mode === id}" aria-checked="${eng.mode === id}" data-action="eng-mode" data-mode="${id}">${ic(icon)}${label}</button>`).join("")}
+      </div>
+      <div id="eng-body"></div>`;
+    renderEngBody();
+  };
+
+  function roundHead(r, verb) {
+    const dots = [0, 1, 2].map((i) => {
+      const res = r.results[i];
+      const cls = res === true ? "is-good" : res === false ? "is-bad" : i === r.results.length && r.status === "run" ? "is-current" : "";
+      return `<span class="rdot ${cls}">${res === true ? ic("check") : res === false ? ic("x") : i + 1}</span>`;
+    }).join("");
+    return `<div class="round-head"><div class="rdots">${dots}</div><span>${verb} <b>1 of 3</b> sentences correctly to pass</span></div>`;
+  }
+
+  function renderEngBody() {
+    const body = $("#eng-body");
+    if (!body) return;
+    const st = engStats();
+    $("#eng-stats").innerHTML = `<span class="eng-stat">${ic("book")}<b>${st.r.passed}</b> reading rounds passed</span>
+      <span class="eng-stat">${ic("pen")}<b>${st.w.passed}</b> writing rounds passed</span>`;
+    $$("[data-action=eng-mode]").forEach((b) => {
+      const on = b.dataset.mode === eng.mode;
+      b.setAttribute("aria-selected", String(on)); b.setAttribute("aria-checked", String(on));
+    });
+    if (eng.mode === "words") return renderWords(body);
+    const r = curRound();
+    if (r.status !== "run") return renderRoundDone(body, r);
+    if (eng.mode === "reading") renderReading(body, r); else renderWriting(body, r);
+  }
+
+  function renderReading(body, r) {
+    const sentence = curSentence();
+    let matched = null;
+    if (eng.heard) matched = lcsMatch(engTokens(sentence), engTokens(eng.heard))[0];
+    const allHeard = matched && matched.every(Boolean);
+    body.innerHTML = `
+      ${roundHead(r, "Read")}
+      <article class="paper paper-read">
+        <span class="paper-tag">${ic("book")}Read this sentence out loud</span>
+        <p class="read-line">${markedWords(sentence, matched, "w-ok", "w-miss")}</p>
+        ${eng.listening ? `<div class="listening-inline"><div class="eq" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>Listening…</div>` : ""}
+        ${eng.heard ? `<p class="heard">${ic(allHeard ? "check" : "eye")}<span>We heard: “${esc(eng.heard)}”${allHeard ? " · every word matched!" : ""}</span></p>` : ""}
+        ${eng.micMsg ? `<p class="heard heard-warn">${esc(eng.micMsg)}</p>` : ""}
+      </article>
+      <div class="eng-controls">
+        ${canSpeak ? `<button type="button" class="btn btn-quiet" data-action="eng-hear">${ic("speaker")}Hear it</button>` : ""}
+        ${SR ? `<button type="button" class="btn btn-mic${eng.listening ? " is-on" : ""}" data-action="eng-mic">${ic("mic")}${eng.listening ? "Stop" : "Check my reading"}</button>` : ""}
+      </div>
+      <div class="eng-grade">
+        <button type="button" class="btn btn-bad btn-lg" data-action="eng-grade" data-ok="0">${ic("x")}Not yet</button>
+        <button type="button" class="btn btn-good btn-lg${allHeard ? " is-glow" : ""}" data-action="eng-grade" data-ok="1">${ic("check")}I read it correctly</button>
+      </div>
+      ${SR ? `<p class="fine">“Check my reading” uses your browser's speech recognition, which may send your audio to the browser maker to turn it into text.</p>` : ""}`;
+  }
+
+  function writingFeedback(sentence, w) {
+    const exp = engTokens(sentence);
+    const got = engTokens(w.typed);
+    const [me, mg] = lcsMatch(exp, got);
+    let tip = "";
+    if (w.correct) {
+      const typedWords = new Set(w.typed.replace(/[.,!?]/g, " ").split(/\s+/));
+      const caps = sentence.replace(/[.,!?]/g, " ").split(/\s+/).filter((x) => /^[A-Z]/.test(x) && !typedWords.has(x));
+      if (caps.length) tip = `<p class="fb-tip">${ic("sparkle")}Tip: start ${caps.map((c) => `<b>${esc(c)}</b>`).join(", ")} with a capital letter.</p>`;
+    }
+    return `<div class="feedback ${w.correct ? "is-ok" : "is-bad"}">
+      <strong class="fb-title">${ic(w.correct ? "check" : "x")}${w.correct ? "Perfect!" : "Not quite"}</strong>
+      <p class="fb-line"><span class="fb-label">Sentence</span><span>${markedWords(sentence, me, "", "w-miss")}</span></p>
+      ${w.correct ? "" : `<p class="fb-line"><span class="fb-label">You wrote</span><span>${w.typed.trim() ? markedWords(w.typed, mg, "", "w-extra") : "<em>nothing yet</em>"}</span></p>`}
+      ${tip}
+    </div>`;
+  }
+
+  function renderWriting(body, r) {
+    const sentence = curSentence();
+    const w = r.w;
+    body.innerHTML = `
+      ${roundHead(r, "Write")}
+      <article class="paper paper-write">
+        <span class="paper-tag">${ic("pen")}Listen, then write the sentence</span>
+        ${canSpeak ? `<div class="dictate">
+          <button type="button" class="play-btn" data-action="eng-play" aria-label="Play the sentence">${ic("speaker")}</button>
+          <div class="dictate-text"><strong>Play sentence</strong><span>Tap to hear it again</span></div>
+          <button type="button" class="chip-btn" data-action="eng-slow">Slower</button>
+          <button type="button" class="chip-btn" data-action="eng-peek" aria-pressed="${w.peek}">${ic("eye")}${w.peek ? "Hide" : "Peek"}</button>
+        </div>` : `<p class="fine">Your browser can't read aloud. Ask a partner to read the sentence to you, or use Peek.</p>
+          <button type="button" class="chip-btn" data-action="eng-peek" aria-pressed="${w.peek}">${ic("eye")}${w.peek ? "Hide" : "Peek"}</button>`}
+        ${w.peek ? `<p class="peek-line">${esc(sentence)}</p>` : ""}
+        <textarea id="eng-input" class="lined" rows="2" maxlength="160" placeholder="Type what you hear" autocomplete="off" autocapitalize="sentences" autocorrect="off" spellcheck="false" aria-label="Your sentence" ${w.checked ? "readonly" : ""}>${esc(w.typed)}</textarea>
+        ${w.checked ? writingFeedback(sentence, w) : ""}
+      </article>
+      <div class="eng-grade">
+        ${w.checked
+          ? `${w.correct ? "" : `<button type="button" class="btn btn-quiet btn-lg" data-action="eng-retry">${ic("reset")}Try again</button>`}
+             <button type="button" class="btn btn-primary btn-lg" data-action="eng-next">${w.first ? "Finish round" : "Next sentence"}${ic("arrow")}</button>`
+          : `<button type="button" class="btn btn-primary btn-lg" data-action="eng-check">${ic("check")}Check</button>`}
+      </div>`;
+    const input = $("#eng-input", body);
+    input.addEventListener("input", (e) => { w.typed = e.target.value; });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!w.checked) ACTIONS["eng-check"](); }
+    });
+    if (!w.checked && window.matchMedia("(hover: hover)").matches) input.focus({ preventScroll: true });
+    if (canSpeak && !w.played) { w.played = true; setTimeout(() => { if (current === "english" && eng.mode === "writing") speak(sentence); }, 350); }
+  }
+
+  function renderRoundDone(body, r) {
+    const pass = r.status === "pass";
+    const reading = eng.mode === "reading";
+    const s = engStats();
+    const k = reading ? "r" : "w";
+    body.innerHTML = `
+      ${roundHead(r, reading ? "Read" : "Write")}
+      <section class="result ${pass ? "is-pass" : "is-fail"} result-compact">
+        <div class="seal" aria-hidden="true">${ic(pass ? (reading ? "book" : "pen") : "target")}</div>
+        <h2>${pass ? `${reading ? "Reading" : "Writing"} round passed!` : "Not this round"}</h2>
+        <p class="lead">${pass ? `You got it on sentence ${r.results.length} of 3.` : "Practice makes perfect. Try a new set of sentences."}</p>
+        <p class="fine">${s[k].passed} of ${s[k].done} ${reading ? "reading" : "writing"} rounds passed so far</p>
+        <button type="button" class="btn btn-primary btn-lg" data-action="eng-round">${ic("reset")}Next round</button>
+      </section>`;
+  }
+
+  function renderWords(body) {
+    const list = (title, iconName, vocab, url) => `
+      <section class="word-list">
+        <div class="word-list-head"><span class="blob">${ic(iconName)}</span><h2>${title}</h2>
+          <a class="lookup" href="${esc(url)}" target="_blank" rel="noopener">${ic("link")}USCIS list</a></div>
+        <div class="cat-grid">
+          ${vocab.map(([cat, words]) => `<div class="cat"><h3>${esc(cat)}</h3><div class="word-chips">
+            ${words.map((wd) => `<button type="button" class="word" data-action="eng-word" data-word="${esc(wd.replace(/\//g, ", "))}">${esc(wd)}</button>`).join("")}
+          </div></div>`).join("")}
+        </div>
+      </section>`;
+    body.innerHTML = `
+      <p class="words-intro">${ic("speaker")}Every sentence on the real test uses only these official words.${canSpeak ? " Tap a word to hear it." : ""}</p>
+      <div class="word-lists">
+        ${list("Reading words", "book", EN.readingVocab, EN.sources.reading)}
+        ${list("Writing words", "pen", EN.writingVocab, EN.sources.writing)}
+      </div>
+      <p class="fine center">Practice sentences in this app are written from these lists. USCIS doesn't publish the actual test sentences.</p>`;
+  }
+
   /* ================= My info ================= */
 
   function officialRole(q) {
@@ -962,6 +1232,7 @@
     reload();
     deck.cards = [];
     test.stage = "start";
+    eng.round = {};
     renderAvatar();
     show(current);
   }
@@ -1008,9 +1279,33 @@
         if (name) addProfile(name);
       }
     },
+    "eng-open"(el) { eng.mode = el.dataset.mode; },
+    "eng-mode"(btn) { stopListening(); stopSpeaking(); eng.mode = btn.dataset.mode; eng.heard = ""; eng.micMsg = ""; renderEngBody(); },
+    "eng-hear"() { stopListening(); speak(curSentence(), null, 0.85); },
+    "eng-mic"() { toggleListening(); },
+    "eng-grade"(btn) { engResult(btn.dataset.ok === "1"); },
+    "eng-play"() { speak(curSentence()); },
+    "eng-slow"() { speak(curSentence(), null, 0.6); },
+    "eng-peek"() { const w = curRound().w; w.peek = !w.peek; renderEngBody(); },
+    "eng-check"() {
+      const w = curRound().w;
+      const input = $("#eng-input");
+      if (input) w.typed = input.value;
+      if (!w.typed.trim()) { if (input) input.focus(); return; }
+      const a = engTokens(curSentence()); const b = engTokens(w.typed);
+      w.correct = a.length === b.length && a.every((t, i) => t === b[i]);
+      if (w.first === null) w.first = w.correct;
+      w.checked = true;
+      announce(w.correct ? "Correct" : "Not quite");
+      renderEngBody();
+    },
+    "eng-retry"() { const w = curRound().w; w.checked = false; w.correct = null; w.typed = ""; renderEngBody(); },
+    "eng-next"() { engResult(curRound().w.first === true); },
+    "eng-round"() { newRound(eng.mode); renderEngBody(); },
+    "eng-word"(btn) { speak(btn.dataset.word, null, 0.8); },
     reset() {
-      if (!window.confirm(`Reset ${settings.version} test progress and interview history for ${settings.profile}?`)) return;
-      store.remove(progressKey()); store.remove(historyKey()); reload();
+      if (!window.confirm(`Reset ${settings.version} test progress, interview history, and reading/writing results for ${settings.profile}?`)) return;
+      store.remove(progressKey()); store.remove(historyKey()); store.remove(engKey()); eng.round = {}; reload();
       deck.cards = []; test.stage = "start";
       show(current);
     },
