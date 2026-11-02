@@ -197,7 +197,7 @@
     let extra = "";
     if (q.note && !o.compact) extra += `<p class="ans-note">${esc(q.note)}</p>`;
     if (q.updates) {
-      extra += `<p class="ans-update">${ic("clock")}Changes after elections · <a href="${esc(META.testUpdatesUrl)}" target="_blank" rel="noopener">verify on uscis.gov</a></p>`;
+      extra += `<p class="ans-update">${ic("clock")}Checked ${esc(META.lastChecked)} · may change after elections · <a href="${esc(META.testUpdatesUrl)}" target="_blank" rel="noopener">verify on uscis.gov</a></p>`;
     }
     return `<div class="answers">${html}</div>${extra}`;
   }
@@ -310,13 +310,14 @@
     { id: "english", label: "Reading & writing", short: "English", icon: "pen" },
     { id: "study", label: "Study guide", short: "Study", icon: "book" },
     { id: "me", label: "My info", icon: "user" },
+    { id: "about", label: "Disclaimer & privacy", icon: "shield", hidden: true },
   ];
   let current = null;
 
   function renderNav() {
     const link = (v, short) => `<a href="#${v.id}" data-view="${v.id}">${ic(v.icon)}<span>${esc(short && v.short ? v.short : v.label)}</span></a>`;
-    $("#tabs").innerHTML = VIEWS.filter((v) => v.id !== "me").map((v) => link(v)).join("");
-    $("#bottom-nav").innerHTML = VIEWS.map((v) => link(v, true)).join("");
+    $("#tabs").innerHTML = VIEWS.filter((v) => v.id !== "me" && !v.hidden).map((v) => link(v)).join("");
+    $("#bottom-nav").innerHTML = VIEWS.filter((v) => !v.hidden).map((v) => link(v, true)).join("");
     renderAvatar();
   }
   function renderAvatar() {
@@ -1129,6 +1130,39 @@
       <p class="fine center">Practice sentences in this app are written from these lists. USCIS doesn't publish the actual test sentences.</p>`;
   }
 
+  /* ================= Disclaimer & privacy ================= */
+
+  RENDER.about = (view) => {
+    const card = (icon, title, body) => `<section class="legal-card"><span class="blob">${ic(icon)}</span><h2>${title}</h2>${body}</section>`;
+    view.innerHTML = `
+      <div class="page-head"><h1 class="page-title">${ic("shield")}Disclaimer &amp; privacy</h1></div>
+      <p class="legal-lead">Please read this before relying on the app. Last updated ${esc(META.lastChecked)}.</p>
+      <div class="legal-grid">
+        ${card("flag", "Not an official government site", `<p>US Citizen is an independent study aid. It is not affiliated with, endorsed by, or connected to U.S. Citizenship and Immigration Services (USCIS) or any government agency.</p>`)}
+        ${card("scales", "Not legal advice", `<p>Nothing here is legal advice, and using the app does not create an attorney-client relationship. For questions about your case or eligibility, talk to a licensed immigration attorney or a DOJ-accredited representative.</p>
+          <a class="legal-link" href="https://www.uscis.gov/avoid-scams/find-legal-services" target="_blank" rel="noopener">${ic("link")}How to find trustworthy legal help (uscis.gov)</a>`)}
+        ${card("clock", "Always confirm with USCIS", `<p>Questions and answers come from official USCIS materials, but USCIS can update them at any time, and some answers change after elections or appointments. Check <a href="https://www.uscis.gov/citizenship" target="_blank" rel="noopener">uscis.gov</a> before your interview.</p>
+          <p class="legal-meta">Answers about current officials were last checked against USCIS on ${esc(META.lastChecked)} (USCIS page last updated ${esc(META.testUpdatesLastUpdated)}).</p>`)}
+        ${card("target", "No guarantee of results", `<p>Practicing here does not guarantee that you will pass. The naturalization test is given and scored by a USCIS officer.</p>`)}
+        ${card("pen", "Practice sentences aren't real test items", `<p>USCIS does not publish the sentences used in the reading and writing tests. The practice sentences here are original and use only words from the official USCIS vocabulary lists.</p>`)}
+        ${card("doc", "Provided “as is”", `<p>The app is free and provided “as is”, without warranties of any kind. To the fullest extent permitted by law, its creator is not liable for errors, omissions, or any decisions or outcomes based on its use.</p>`)}
+        ${card("eye", "Your privacy", `<p>No accounts, ads, analytics, or server. Your progress and the answers you type are saved only in this browser on this device, and clearing your browser data erases them.</p>
+          <p>The optional “Check my reading” button uses your browser's speech recognition, which may send your audio to the browser maker (for example, Google or Apple) to turn it into text.</p>`)}
+        ${card("search", "Found a mistake?", `<p>Please report it so it can be fixed for everyone.</p>
+          <a class="legal-link" href="https://github.com/nsingh-phd/uscitizen/issues" target="_blank" rel="noopener">${ic("link")}Report an issue on GitHub</a>`)}
+      </div>
+      <section class="block">
+        <div class="block-head"><h2>Official sources</h2></div>
+        <ul class="source-list">
+          <li><span class="src-name"><a href="https://www.uscis.gov/sites/default/files/document/questions-and-answers/2025-Civics-Test-128-Questions-and-Answers.pdf" target="_blank" rel="noopener">128 Civics Questions and Answers, 2025 version</a></span><span class="src-meta">USCIS M-1778 (09/25)</span></li>
+          <li><span class="src-name"><a href="https://www.uscis.gov/sites/default/files/document/questions-and-answers/100q.pdf" target="_blank" rel="noopener">100 Civics Questions and Answers, 2008 version</a></span><span class="src-meta">USCIS, rev. 01/19</span></li>
+          <li><span class="src-name"><a href="${esc(META.testUpdatesUrl)}" target="_blank" rel="noopener">Civics test updates (current officials)</a></span><span class="src-meta">Updated ${esc(META.testUpdatesLastUpdated)}</span></li>
+          <li><span class="src-name"><a href="https://www.uscis.gov/sites/default/files/document/questions-and-answers/reading_vocab.txt" target="_blank" rel="noopener">Reading vocabulary</a> and <a href="https://www.uscis.gov/sites/default/files/document/questions-and-answers/writing_vocab.txt" target="_blank" rel="noopener">writing vocabulary</a></span><span class="src-meta">USCIS, rev. 07/14</span></li>
+          <li><span class="src-name"><a href="https://www.uscis.gov/citizenship/find-study-materials-and-resources/study-for-the-test" target="_blank" rel="noopener">All USCIS study materials</a></span><span class="src-meta">Flash cards, audio, and more</span></li>
+        </ul>
+      </section>`;
+  };
+
   /* ================= My info ================= */
 
   function officialRole(q) {
@@ -1186,9 +1220,10 @@
 
       <section class="block">
         <div class="block-head"><h2>Current officials</h2>
-          <span class="block-sub">From USCIS, updated ${esc(META.testUpdatesLastUpdated)} · <a href="${esc(META.testUpdatesUrl)}" target="_blank" rel="noopener">check before your interview</a></span>
+          <span class="block-sub">Answer with whoever holds the office on your interview day</span>
         </div>
         <div class="official-grid">${officials}</div>
+        <p class="dated-note">${ic("clock")}<span>USCIS last updated these answers on <b>${esc(META.testUpdatesLastUpdated)}</b>. This app last checked them on <b>${esc(META.lastChecked)}</b>. They can change after elections, so <a href="${esc(META.testUpdatesUrl)}" target="_blank" rel="noopener">confirm on uscis.gov</a> before your interview.</span></p>
       </section>
 
       <section class="block danger">

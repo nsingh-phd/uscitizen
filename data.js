@@ -15,6 +15,8 @@
  */
 window.CIVICS_META = {
   testUpdatesLastUpdated: "09/18/2025",
+  // Date these answers were last compared with the USCIS test updates page.
+  lastChecked: "November 2, 2026",
   testUpdatesUrl: "https://www.uscis.gov/citizenship/testupdates",
 };
 window.CIVICS_DATA = {
