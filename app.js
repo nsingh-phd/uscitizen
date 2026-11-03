@@ -206,7 +206,7 @@
     const t = topicOf(q.section);
     return `<span class="topic-chip" style="--topic:${t.color}">${ic(t.icon)}${esc(t.short)}</span>`;
   };
-  const starChip = (q) => (q.star ? `<span class="mini-chip mini-star">${ic("star")}65/20</span>` : "");
+  const starChip = (q) => (q.star ? `<span class="mini-chip mini-star" title="One of the 20 starred questions for applicants 65 or older with 20+ years as a permanent resident">${ic("star")}65/20</span>` : "");
 
   /* ================= Speech ================= */
 
@@ -311,6 +311,7 @@
     { id: "study", label: "Study guide", short: "Study", icon: "book" },
     { id: "me", label: "My info", icon: "user" },
     { id: "about", label: "Disclaimer & privacy", icon: "shield", hidden: true },
+    { id: "civics-test", label: "About the civics test", icon: "doc", hidden: true },
   ];
   let current = null;
 
@@ -388,7 +389,7 @@
         ${HERO_ART}
         <div class="hero-grid">
           <div class="hero-copy">
-            <p class="kicker">${ic("torch")}U.S. naturalization civics test</p>
+            <a class="kicker kicker-link" href="#civics-test">${ic("torch")}U.S. naturalization civics test${ic("arrow", "kicker-go")}</a>
             <h1>${name ? `Hi ${esc(name)}, let's get you` : "Let's get you"} <span>citizen ready.</span></h1>
             <div class="hero-controls">
               <div class="seg seg-dark" role="radiogroup" aria-label="Test version">
@@ -396,7 +397,8 @@
               </div>
               <button type="button" class="switch switch-dark" role="switch" aria-checked="${settings.only65}" data-action="only65"><span class="knob"></span>65/20 only</button>
             </div>
-            <p class="hero-hint">${settings.version === "2025" ? "N-400 filed on or after Oct 20, 2025" : "N-400 filed before Oct 20, 2025"}</p>
+            <p class="hero-hint">${settings.version === "2025" ? "N-400 filed on or after Oct 20, 2025" : "N-400 filed before Oct 20, 2025"}${settings.only65 ? " · 65/20: 20 starred questions, 10 asked, 6 to pass" : ""}
+              · <a href="#civics-test" data-action="civics-open" data-anchor="sixty-five">What is 65/20?</a></p>
           </div>
           <div class="score-card">
             <div class="ring-wrap">
@@ -461,7 +463,7 @@
         </div>
         <div class="facts">
           <span class="fact">${ic("reset")}Failed a part? Retest in 60–90 days</span>
-          <span class="fact">${ic("users")}65+ with 20 years as a resident: 20 starred questions</span>
+          <a class="fact fact-link" href="#civics-test" data-action="civics-open" data-anchor="sixty-five">${ic("users")}65 or older with 20+ years as a resident? Study just 20 questions</a>
           <a class="fact fact-link" href="https://www.uscis.gov/citizenship/find-study-materials-and-resources/study-for-the-test" target="_blank" rel="noopener">${ic("link")}Official USCIS materials</a>
         </div>
       </section>`;
@@ -469,7 +471,7 @@
 
   /* ================= Flashcards ================= */
 
-  const deck = { cards: [], i: 0, got: 0, missed: [], flipped: false, mode: "smart", section: "all", done: false };
+  const deck = { cards: [], i: 0, got: 0, missed: [], flipped: false, mode: "smart", section: "all", done: false, busy: false };
 
   function buildDeck(only) {
     if (only) return shuffle(only);
@@ -481,7 +483,7 @@
   }
   function newDeck(only) {
     deck.cards = buildDeck(only);
-    deck.i = 0; deck.got = 0; deck.missed = []; deck.flipped = false; deck.done = false;
+    deck.i = 0; deck.got = 0; deck.missed = []; deck.flipped = false; deck.done = false; deck.busy = false;
   }
 
   RENDER.cards = (view, opts) => {
@@ -577,7 +579,7 @@
 
   function flipCard() {
     const card = $("#fc");
-    if (!card) return;
+    if (!card || deck.busy) return;
     deck.flipped = !deck.flipped;
     card.classList.toggle("is-flipped", deck.flipped);
     $$("[data-action=grade]").forEach((b) => { b.disabled = !deck.flipped; });
@@ -586,10 +588,13 @@
   }
 
   function gradeCard(correct, animated) {
-    if (!deck.flipped || deck.done) return;
+    if (!deck.flipped || deck.done || (deck.busy && !animated)) return;
     const q = deck.cards[deck.i];
     const card = $("#fc");
+    deck.busy = true;
     const advance = () => {
+      deck.busy = false;
+      if (deck.cards[deck.i] !== q) return; // deck changed mid-animation
       record(q, correct);
       if (correct) deck.got++; else deck.missed.push(q);
       deck.i++;
@@ -617,8 +622,15 @@
       if (e.button !== 0 || e.target.closest("a")) return;
       x0 = e.clientX; y0 = e.clientY; dx = 0; dragging = false;
     });
+    const cancel = () => {
+      x0 = null; dragging = false;
+      card.style.transition = ""; card.style.transform = "";
+      card.style.setProperty("--sg", 0); card.style.setProperty("--sb", 0);
+    };
     card.addEventListener("pointermove", (e) => {
       if (x0 === null) return;
+      // Released outside the card without a drag: forget the stale press.
+      if (e.pointerType === "mouse" && !(e.buttons & 1)) { cancel(); return; }
       dx = e.clientX - x0;
       const dy = e.clientY - y0;
       if (!dragging && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
@@ -632,11 +644,12 @@
       card.style.setProperty("--sb", deck.flipped ? clamp01(-dx / 120) : 0);
     });
     const end = () => {
-      if (x0 === null) return;
+      if (x0 === null || deck.busy) { x0 = null; dragging = false; return; }
       const wasDrag = dragging;
       x0 = null; dragging = false;
       if (!wasDrag) { flipCard(); return; }
-      if (deck.flipped && Math.abs(dx) > 110) {
+      if (deck.flipped && !deck.busy && Math.abs(dx) > 110) {
+        deck.busy = true;
         card.style.transition = "transform .25s ease, opacity .25s ease";
         card.style.transform = `translateX(${Math.sign(dx) * 130}%) rotate(${dx / 8}deg)`;
         card.style.opacity = "0";
@@ -649,11 +662,8 @@
       }
     };
     card.addEventListener("pointerup", end);
-    card.addEventListener("pointercancel", () => {
-      x0 = null; dragging = false;
-      card.style.transition = ""; card.style.transform = "";
-      card.style.setProperty("--sg", 0); card.style.setProperty("--sb", 0);
-    });
+    card.addEventListener("pointercancel", cancel);
+    card.addEventListener("pointerleave", () => { if (!dragging) x0 = null; });
     card.addEventListener("keydown", (e) => {
       if (e.key === " " || e.key === "Enter") { e.preventDefault(); flipCard(); }
     });
@@ -1082,7 +1092,7 @@
       <div class="eng-grade">
         ${w.checked
           ? `${w.correct ? "" : `<button type="button" class="btn btn-quiet btn-lg" data-action="eng-retry">${ic("reset")}Try again</button>`}
-             <button type="button" class="btn btn-primary btn-lg" data-action="eng-next">${w.first ? "Finish round" : "Next sentence"}${ic("arrow")}</button>`
+             <button type="button" class="btn btn-primary btn-lg" data-action="eng-next">${w.first || r.results.length >= 2 ? "Finish round" : "Next sentence"}${ic("arrow")}</button>`
           : `<button type="button" class="btn btn-primary btn-lg" data-action="eng-check">${ic("check")}Check</button>`}
       </div>`;
     const input = $("#eng-input", body);
@@ -1163,6 +1173,89 @@
       </section>`;
   };
 
+  /* ================= About the civics test ================= */
+
+  const USCIS = {
+    page: "https://www.uscis.gov/citizenship-resource-center/naturalization-test-and-study-resources/2025-civics-test",
+    q128: "https://www.uscis.gov/sites/default/files/document/questions-and-answers/2025-Civics-Test-128-Questions-and-Answers.pdf",
+    q100: "https://www.uscis.gov/sites/default/files/document/questions-and-answers/100q.pdf",
+    guide: "https://www.uscis.gov/sites/default/files/document/brochures/USCIS-2025-Civics-Test-Study-Guide.pdf",
+    updates: "https://www.uscis.gov/citizenship/find-study-materials-and-resources/check-for-test-updates",
+    fedreg: "https://www.federalregister.gov/public-inspection/2025-18050/implementation-of-2025-naturalization-civics-test",
+    news: "https://www.uscis.gov/newsroom/news-releases/uscis-unveils-first-changes-to-naturalization-test-in-multi-step-overhaul-of-american-citizenship",
+    exceptions: "https://www.uscis.gov/citizenship/exceptions-and-accommodations",
+    n648: "https://www.uscis.gov/n-648",
+    accom: "https://egov.uscis.gov/e-request/accom",
+  };
+  const ext = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+  let pendingAnchor = null;
+  function scrollToAnchor() {
+    const el = pendingAnchor && document.getElementById(pendingAnchor);
+    pendingAnchor = null;
+    if (el) el.scrollIntoView({ block: "start", behavior: "auto" });
+  }
+
+  RENDER["civics-test"] = (view) => {
+    const tile = (n, label, cls) => `<div class="rule-tile${cls ? " " + cls : ""}"><span class="big">${n}</span><span>${label}</span></div>`;
+    const version = (id, title, who, tiles, extra, practice) => `<section class="test-card" id="${id}">
+        <div class="test-card-head"><h2>${title}</h2><span class="test-who">${who}</span></div>
+        <div class="rule-tiles">${tiles}</div>
+        ${extra}
+        ${practice}
+      </section>`;
+    const card = (icon, title, body) => `<section class="legal-card"><span class="blob">${ic(icon)}</span><h2>${title}</h2>${body}</section>`;
+    const practiceBtn = (v, only65, label) => `<button type="button" class="btn btn-quiet" data-action="civics-practice" data-v="${v}" data-only65="${only65}">${ic("cards")}${label}</button>`;
+
+    view.innerHTML = `
+      <div class="page-head"><h1 class="page-title">${ic("capitol")}About the civics test</h1></div>
+      <p class="legal-lead">A plain-language summary of the official USCIS rules, with links to every source. Always ${ext(USCIS.page, "check uscis.gov")} for the latest version.</p>
+
+      <div class="test-grid">
+        ${version("v2025", "2025 civics test", "Form N-400 filed on or after October 20, 2025",
+          tile(128, "questions to study") + tile(20, "asked, at most") + tile(12, "correct to pass", "rule-good"),
+          `<p>The test is oral: a USCIS officer asks the questions and you answer out loud. The officer stops as soon as you get 12 right (you pass) or 9 wrong (you don't).</p>`,
+          practiceBtn("2025", false, "Practice the 2025 test"))}
+        ${version("v2008", "2008 civics test", "Form N-400 filed before October 20, 2025",
+          tile(100, "questions to study") + tile(10, "asked, at most") + tile(6, "correct to pass", "rule-good"),
+          `<p>Also oral. The officer stops once you get 6 right or 5 wrong.</p>`,
+          practiceBtn("2008", false, "Practice the 2008 test"))}
+      </div>
+
+      <section class="test-card test-card-65" id="sixty-five">
+        <div class="test-card-head"><h2>${ic("star")}65/20 special consideration</h2>
+          <span class="test-who">You are 65 or older <b>and</b> have been a lawful permanent resident (green card holder) for 20 years or more</span></div>
+        <p>If both are true, USCIS lets you study a much shorter list: just the <b>20 questions marked with a star</b> (an asterisk on the official list). You may also take the civics test in the language of your choice.</p>
+        <div class="rule-tiles">${tile(20, "starred questions") + tile(10, "asked") + tile(6, "correct to pass", "rule-good")}</div>
+        <p>This works the same way for the 2025 and 2008 tests; each version has its own 20 starred questions. In this app, turn on <b>65/20 only</b> on the home screen to practice with just those questions, or look for the ${ic("star")}<b>65/20</b> tag on a card.</p>
+        <p class="legal-meta">Age and years of residence are counted on the date you file Form N-400.</p>
+        <div class="row-start">${practiceBtn(settings.version, true, `Practice the ${settings.version} starred questions`)}</div>
+      </section>
+
+      <div class="legal-grid">
+        ${card("clock", "Answers that change", `<p>Some answers depend on who holds office, like the President or the Speaker of the House. Answer with the person serving on the day of your interview. USCIS lists the current answers on its ${ext(USCIS.updates, "test updates page")}.</p>`)}
+        ${card("chat", "English exemptions: 50/20 and 55/15", `<p>If you are 50 or older with 20 years as a permanent resident, or 55 or older with 15 years, you don't take the English test. You still take the civics test, in your own language, and must bring an interpreter fluent in English and that language.</p>`)}
+        ${card("shield", "Medical disability exception", `<p>If a physical or developmental disability or a mental impairment keeps you from meeting the English or civics requirements, you can ask for an exception with ${ext(USCIS.n648, "Form N-648")}. A licensed doctor or clinical psychologist must fill it out.</p>`)}
+        ${card("reset", "If you don't pass", `<p>You get a second chance. USCIS retests you on the part you didn't pass, usually 60 to 90 days after your first interview.</p>`)}
+        ${card("users", "Accommodations", `<p>If you need an accommodation for a disability at your interview, ${ext(USCIS.accom, "request it online")} as soon as you get your appointment notice.</p>`)}
+      </div>
+
+      <section class="block">
+        <div class="block-head"><h2>Official USCIS resources</h2></div>
+        <ul class="source-list">
+          <li><span class="src-name">${ext(USCIS.page, "2025 Civics Test")}</span><span class="src-meta">USCIS overview page</span></li>
+          <li><span class="src-name">${ext(USCIS.q128, "128 Civics Questions and Answers (2025 version)")}</span><span class="src-meta">PDF, M-1778 (09/25)</span></li>
+          <li><span class="src-name">${ext(USCIS.guide, "One Nation, One People study guide (2025 version)")}</span><span class="src-meta">PDF</span></li>
+          <li><span class="src-name">${ext(USCIS.q100, "100 Civics Questions and Answers (2008 version)")}</span><span class="src-meta">PDF</span></li>
+          <li><span class="src-name">${ext(USCIS.updates, "Check for test updates")}</span><span class="src-meta">Answers that change with elections</span></li>
+          <li><span class="src-name">${ext(USCIS.exceptions, "Exceptions and accommodations")}</span><span class="src-meta">50/20, 55/15, 65/20, N-648</span></li>
+          <li><span class="src-name">${ext(USCIS.fedreg, "Federal Register notice")}</span><span class="src-meta">Implementation of the 2025 test</span></li>
+          <li><span class="src-name">${ext(USCIS.news, "USCIS news release")}</span><span class="src-meta">Announcement of the 2025 test</span></li>
+        </ul>
+      </section>
+      <p class="fine center">Summary written for this app from USCIS materials; it is not legal advice. See the <a href="#about">disclaimer</a>.</p>`;
+    requestAnimationFrame(scrollToAnchor);
+  };
+
   /* ================= My info ================= */
 
   function officialRole(q) {
@@ -1237,6 +1330,7 @@
       if (name === DC) Object.assign(mine, DC_ANSWERS);
       else {
         Object.entries(DC_ANSWERS).forEach(([k, v]) => { if (mine[k] === v) mine[k] = ""; });
+        if (TERRITORIES.some((p) => mine.senator === `${p[0]} has no U.S. senators`)) mine.senator = "";
         if (place) mine.capital = place[1];
         if (TERRITORIES.some((p) => p[0] === name) && !mine.senator) mine.senator = `${name} has no U.S. senators`;
       }
@@ -1315,6 +1409,14 @@
       }
     },
     "eng-open"(el) { eng.mode = el.dataset.mode; },
+    "civics-open"(el) { pendingAnchor = el.dataset.anchor || null; if (current === "civics-test") scrollToAnchor(); },
+    "civics-practice"(btn) {
+      const v = btn.dataset.v; const only65 = btn.dataset.only65 === "true";
+      if (v !== settings.version) { settings.version = v; reload(); deck.section = "all"; study.section = "all"; }
+      settings.only65 = only65; saveSettings();
+      deck.cards = []; deck.section = "all"; test.stage = "start";
+      go("cards", { fresh: true });
+    },
     "eng-mode"(btn) { stopListening(); stopSpeaking(); eng.mode = btn.dataset.mode; eng.heard = ""; eng.micMsg = ""; renderEngBody(); },
     "eng-hear"() { stopListening(); speak(curSentence(), null, 0.85); },
     "eng-mic"() { toggleListening(); },
