@@ -194,7 +194,7 @@
     if (q.local) {
       const v = (mine[q.local] || "").trim();
       items = v ? [v] : [];
-      if (!v) html += `<a class="ans ans-missing" href="#me">${ic("plus")}Add yours in My info</a>`;
+      if (!v) html += `<a class="ans ans-missing" href="/my-info">${ic("plus")}Add yours in My info</a>`;
     }
     html = items.map((a) => `<span class="ans">${esc(a)}</span>`).join("") + html;
     let extra = "";
@@ -307,19 +307,24 @@
   /* ================= Shell: nav ================= */
 
   const VIEWS = [
-    { id: "home", label: "Home", icon: "home" },
-    { id: "cards", label: "Flashcards", short: "Cards", icon: "cards" },
-    { id: "test", label: "Mock interview", short: "Interview", icon: "mic" },
-    { id: "english", label: "Reading & writing", short: "English", icon: "pen" },
-    { id: "study", label: "Study guide", short: "Study", icon: "book" },
-    { id: "me", label: "My info", icon: "user" },
-    { id: "about", label: "Disclaimer & privacy", icon: "shield", hidden: true },
-    { id: "civics-test", label: "About the civics test", icon: "doc", hidden: true },
+    { id: "home", path: "/", label: "Home", icon: "home" },
+    { id: "cards", path: "/flashcards", label: "Flashcards", short: "Cards", icon: "cards" },
+    { id: "test", path: "/mock-interview", label: "Mock interview", short: "Interview", icon: "mic" },
+    { id: "english", path: "/reading", label: "Reading & writing", short: "English", icon: "pen" },
+    { id: "study", path: "/study-guide", label: "Study guide", short: "Study", icon: "book" },
+    { id: "me", path: "/my-info", label: "My info", icon: "user" },
+    { id: "about", path: "/disclaimer", label: "Disclaimer & privacy", icon: "shield", hidden: true },
+    { id: "civics-test", path: "/civics-test", label: "About the civics test", icon: "doc", hidden: true },
+    { id: "notfound", path: null, label: "Page not found", icon: "search", hidden: true },
   ];
+  // The Reading & writing view has one URL per tab.
+  const ENG_PATHS = { reading: "/reading", writing: "/writing", words: "/word-lists" };
+  const ENG_TITLES = { reading: "Reading practice", writing: "Writing practice", words: "Word lists" };
+  const BASE_TITLE = "US Citizen · Test Practice";
   let current = null;
 
   function renderNav() {
-    const link = (v, short) => `<a href="#${v.id}" data-view="${v.id}">${ic(v.icon)}<span>${esc(short && v.short ? v.short : v.label)}</span></a>`;
+    const link = (v, short) => `<a href="${v.path}" data-view="${v.id}">${ic(v.icon)}<span>${esc(short && v.short ? v.short : v.label)}</span></a>`;
     $("#tabs").innerHTML = VIEWS.filter((v) => v.id !== "me" && !v.hidden).map((v) => link(v)).join("");
     $("#bottom-nav").innerHTML = VIEWS.filter((v) => !v.hidden).map((v) => link(v, true)).join("");
     renderAvatar();
@@ -341,7 +346,7 @@
       </button>`).join("")}
       <button type="button" class="menu-item" role="menuitem" data-action="profile-add"><span class="avatar avatar-sm avatar-add">${ic("plus")}</span><span class="menu-name">Add a learner</span></button>
       <hr>
-      <a class="menu-item" role="menuitem" href="#me">${ic("user")}<span class="menu-name">My info &amp; settings</span></a>`;
+      <a class="menu-item" role="menuitem" href="/my-info">${ic("user")}<span class="menu-name">My info &amp; settings</span></a>`;
     menu.hidden = false;
     $("#avatar-btn").setAttribute("aria-expanded", "true");
     const first = $("[aria-checked=true]", menu);
@@ -361,31 +366,57 @@
   }
 
   const RENDER = {};
+  function setTitle(id) {
+    const v = VIEWS.find((x) => x.id === id);
+    const name = id === "english" ? ENG_TITLES[eng.mode] : v.label;
+    document.title = id === "home" ? BASE_TITLE : `${name} · US Citizen`;
+  }
   function show(id, opts) {
     stopSpeaking();
     stopListening();
     current = id;
     markNav(id);
+    setTitle(id);
     const view = $("#view");
     view.className = `view view-${id}`;
     RENDER[id](view, opts || {});
     animateRings(view);
     if (opts && opts.focus) view.focus({ preventScroll: true });
   }
-  function go(id, opts) {
-    const o = Object.assign({ focus: true }, opts);
-    if (location.hash.slice(1) === id) { show(id, o); } else { pendingOpts = o; location.hash = id; }
-    window.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" });
+  /* Routing: each view has a real path (/flashcards, /study-guide, ...). Cloudflare Pages
+     serves index.html for every path, and the History API switches views without reloads. */
+  const cleanPath = (p) => p.replace(/\/+$/, "") || "/";
+  function parsePath(pathname) {
+    const p = cleanPath(pathname);
+    const mode = Object.keys(ENG_PATHS).find((m) => ENG_PATHS[m] === p);
+    if (mode) return { id: "english", mode };
+    const v = VIEWS.find((x) => x.path === p);
+    return { id: v ? v.id : "notfound" };
   }
-  let pendingOpts = null;
-  function route() {
-    const id = location.hash.slice(1);
-    const target = VIEWS.some((v) => v.id === id) ? id : "home";
-    const opts = pendingOpts || { focus: current !== null };
-    pendingOpts = null;
-    show(target, opts);
-    if (opts.focus) window.scrollTo(0, 0);
+  const pathOf = (id) => (id === "english" ? ENG_PATHS[eng.mode] : VIEWS.find((v) => v.id === id).path);
+  let renderedPath = null;
+
+  function scrollToHash() {
+    const id = decodeURIComponent(location.hash.slice(1));
+    const el = id && document.getElementById(id);
+    if (el) el.scrollIntoView({ block: "start" });
   }
+  function route(opts) {
+    const r = parsePath(location.pathname);
+    if (r.mode) eng.mode = r.mode;
+    // Only the #fragment changed (an in-page link): scroll, don't re-render.
+    if (!opts && current === r.id && renderedPath === location.pathname) { scrollToHash(); return; }
+    const o = opts || { focus: current !== null };
+    renderedPath = location.pathname;
+    show(r.id, o);
+    if (location.hash) requestAnimationFrame(scrollToHash);
+    else if (o.focus) window.scrollTo(0, 0);
+  }
+  function navigate(url, opts) {
+    if (url !== location.pathname + location.hash) history.pushState(null, "", url);
+    route(Object.assign({ focus: true }, opts));
+  }
+  function go(id, opts) { navigate(pathOf(id), opts); }
 
   /* ================= Home ================= */
 
@@ -419,7 +450,7 @@
         ${HERO_ART}
         <div class="hero-grid">
           <div class="hero-copy">
-            <a class="kicker kicker-link" href="#civics-test">${ic("torch")}U.S. naturalization civics test${ic("arrow", "kicker-go")}</a>
+            <a class="kicker kicker-link" href="/civics-test">${ic("torch")}U.S. naturalization civics test${ic("arrow", "kicker-go")}</a>
             <h1>${name ? `Hi ${esc(name)}, let's get you` : "Let's get you"} <span>citizen ready.</span></h1>
             <div class="hero-controls">
               <div class="seg seg-dark" role="radiogroup" aria-label="Test version">
@@ -428,7 +459,7 @@
               <button type="button" class="switch switch-dark" role="switch" aria-checked="${settings.only65}" data-action="only65"><span class="knob"></span>65/20 only</button>
             </div>
             <p class="hero-hint">${settings.version === "2025" ? "N-400 filed on or after Oct 20, 2025" : "N-400 filed before Oct 20, 2025"}${settings.only65 ? " · 65/20: 20 starred questions, 10 asked, 6 to pass" : ""}
-              · <a href="#civics-test" data-action="civics-open" data-anchor="sixty-five">What is 65/20?</a></p>
+              · <a href="/civics-test#65-20">What is 65/20?</a></p>
           </div>
           <div class="score-card">
             <div class="ring-wrap">
@@ -450,25 +481,25 @@
       </section>
 
       <section class="actions">
-        <a class="action action-cards" href="#cards">
+        <a class="action action-cards" href="/flashcards">
           <span class="action-art" aria-hidden="true"><span class="mini-card c1"></span><span class="mini-card c2"></span><span class="mini-card c3">${ic("flip")}</span></span>
           <span class="action-title">Flashcards</span>
           <span class="action-sub">Flip, then swipe</span>
           ${ic("arrow", "action-go")}
         </a>
-        <a class="action action-test" href="#test">
+        <a class="action action-test" href="/mock-interview">
           <span class="action-art" aria-hidden="true"><span class="pulse"></span><span class="pulse p2"></span><span class="action-icon">${ic("mic")}</span></span>
           <span class="action-title">Mock interview</span>
           <span class="action-sub">${r.max} questions · ${r.pass} to pass</span>
           ${ic("arrow", "action-go")}
         </a>
-        <a class="action action-study" href="#study">
+        <a class="action action-study" href="/study-guide">
           <span class="action-art" aria-hidden="true"><span class="action-icon">${ic("book")}</span><span class="float-star s1">${ic("star")}</span><span class="float-star s2">${ic("star")}</span></span>
           <span class="action-title">Study guide</span>
           <span class="action-sub">All ${qs.length} questions</span>
           ${ic("arrow", "action-go")}
         </a>
-        <a class="action action-english" href="#english">
+        <a class="action action-english" href="/reading">
           <span class="action-art" aria-hidden="true"><span class="abc">Aa</span><span class="pencil">${ic("pen")}</span></span>
           <span class="action-title">Reading &amp; writing</span>
           <span class="action-sub">English test practice</span>
@@ -492,13 +523,13 @@
         </div>
         <div class="parts">
           <div class="part">${ic("chat")}<strong>Speaking</strong><span>During the interview</span></div>
-          <a class="part part-link" href="#english" data-action="eng-open" data-mode="reading">${ic("book")}<strong>Reading</strong><span>1 of 3 sentences</span></a>
-          <a class="part part-link" href="#english" data-action="eng-open" data-mode="writing">${ic("pen")}<strong>Writing</strong><span>1 of 3 sentences</span></a>
+          <a class="part part-link" href="/reading">${ic("book")}<strong>Reading</strong><span>1 of 3 sentences</span></a>
+          <a class="part part-link" href="/writing">${ic("pen")}<strong>Writing</strong><span>1 of 3 sentences</span></a>
           <div class="part part-hl">${ic("capitol")}<strong>Civics</strong><span>${r.pass} of ${r.max} correct</span></div>
         </div>
         <div class="facts">
           <span class="fact">${ic("reset")}Failed a part? Retest in 60–90 days</span>
-          <a class="fact fact-link" href="#civics-test" data-action="civics-open" data-anchor="sixty-five">${ic("users")}65 or older with 20+ years as a resident? Study just 20 questions</a>
+          <a class="fact fact-link" href="/civics-test#65-20">${ic("users")}65 or older with 20+ years as a resident? Study just 20 questions</a>
           <a class="fact fact-link" href="https://www.uscis.gov/citizenship/find-study-materials-and-resources/study-for-the-test" target="_blank" rel="noopener">${ic("link")}Official USCIS materials</a>
         </div>
       </section>`;
@@ -1223,12 +1254,6 @@
     accom: "https://egov.uscis.gov/e-request/accom",
   };
   const ext = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
-  let pendingAnchor = null;
-  function scrollToAnchor() {
-    const el = pendingAnchor && document.getElementById(pendingAnchor);
-    pendingAnchor = null;
-    if (el) el.scrollIntoView({ block: "start", behavior: "auto" });
-  }
 
   RENDER["civics-test"] = (view) => {
     const tile = (n, label, cls) => `<div class="rule-tile${cls ? " " + cls : ""}"><span class="big">${n}</span><span>${label}</span></div>`;
@@ -1256,7 +1281,7 @@
           practiceBtn("2008", false, "Practice the 2008 test"))}
       </div>
 
-      <section class="test-card test-card-65" id="sixty-five">
+      <section class="test-card test-card-65" id="65-20">
         <div class="test-card-head"><h2>${ic("star")}65/20 special consideration</h2>
           <span class="test-who">You are 65 or older <b>and</b> have been a lawful permanent resident (green card holder) for 20 years or more</span></div>
         <p>If both are true, USCIS lets you study a much shorter list: just the <b>20 questions marked with a star</b> (an asterisk on the official list). You may also take the civics test in the language of your choice.</p>
@@ -1287,8 +1312,21 @@
           <li><span class="src-name">${ext(USCIS.news, "USCIS news release")}</span><span class="src-meta">Announcement of the 2025 test</span></li>
         </ul>
       </section>
-      <p class="fine center">Summary written for this app from USCIS materials; it is not legal advice. See the <a href="#about">disclaimer</a>.</p>`;
-    requestAnimationFrame(scrollToAnchor);
+      <p class="fine center">Summary written for this app from USCIS materials; it is not legal advice. See the <a href="/disclaimer">disclaimer</a>.</p>`;
+  };
+
+  /* ================= Page not found ================= */
+
+  RENDER.notfound = (view) => {
+    const links = VIEWS.filter((v) => v.path && v.id !== "home")
+      .map((v) => `<a class="fact fact-link" href="${v.path}">${ic(v.icon)}${esc(v.label)}</a>`).join("");
+    view.innerHTML = `<div class="empty">
+        <span class="empty-art">${ic("search")}</span>
+        <h1>Page not found</h1>
+        <p>There's no page at <b>${esc(location.pathname)}</b>.</p>
+        <a class="btn btn-primary" href="/">${ic("home")}Go to the home page</a>
+        <div class="facts center-facts">${links}</div>
+      </div>`;
   };
 
   /* ================= My info ================= */
@@ -1443,8 +1481,6 @@
         if (name) addProfile(name);
       }
     },
-    "eng-open"(el) { eng.mode = el.dataset.mode; },
-    "civics-open"(el) { pendingAnchor = el.dataset.anchor || null; if (current === "civics-test") scrollToAnchor(); },
     "civics-practice"(btn) {
       const v = btn.dataset.v; const only65 = btn.dataset.only65 === "true";
       if (v !== settings.version) { settings.version = v; reload(); deck.section = "all"; study.section = "all"; }
@@ -1452,7 +1488,12 @@
       deck.cards = []; deck.section = "all"; test.stage = "start";
       go("cards", { fresh: true });
     },
-    "eng-mode"(btn) { stopListening(); stopSpeaking(); eng.mode = btn.dataset.mode; eng.heard = ""; eng.micMsg = ""; renderEngBody(); },
+    "eng-mode"(btn) {
+      stopListening(); stopSpeaking(); eng.mode = btn.dataset.mode; eng.heard = ""; eng.micMsg = "";
+      // Switch tabs in place, but give each tab its own URL and title.
+      if (location.pathname !== ENG_PATHS[eng.mode]) history.pushState(null, "", ENG_PATHS[eng.mode]);
+      renderedPath = location.pathname; setTitle("english"); renderEngBody();
+    },
     "eng-hear"() { stopListening(); speak(curSentence(), null, 0.85); },
     "eng-mic"() { toggleListening(); },
     "eng-grade"(btn) { engResult(btn.dataset.ok === "1"); },
@@ -1488,7 +1529,15 @@
     if (menuOpen()) {
       const inMenu = e.target.closest("#profile-menu");
       closeMenu();
-      if (!inMenu) return; // a click outside only closes the menu
+      if (!inMenu) { e.preventDefault(); return; } // a click outside only closes the menu
+    }
+    // Links to the app's own pages switch views in place instead of reloading.
+    const a = e.target.closest("a[href]");
+    if (a && !a.target && a.origin === location.origin && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+      if (a.pathname === location.pathname && a.hash) return; // in-page #anchor: let the browser jump
+      e.preventDefault();
+      navigate(a.pathname + a.hash);
+      return;
     }
     const goBtn = e.target.closest("[data-go]");
     if (goBtn) { go(goBtn.dataset.go); return; }
@@ -1517,6 +1566,6 @@
   /* ================= Boot ================= */
 
   renderNav();
-  window.addEventListener("hashchange", route);
+  window.addEventListener("popstate", () => route());
   route();
 })();
