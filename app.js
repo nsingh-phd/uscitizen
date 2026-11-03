@@ -168,16 +168,19 @@
   const initial = (name) => esc((name.trim()[0] || "?").toUpperCase());
   const displayName = (name) => (name === "Me" ? "" : name);
 
-  function ring(pct, cls) {
+  // pct fills the solid arc; under (optional, >= pct) fills a fainter arc beneath it.
+  function ring(pct, cls, under) {
     const c = 2 * Math.PI * 52;
+    const arc = (klass, v) => `<circle class="${klass}" cx="60" cy="60" r="52" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${c.toFixed(1)}" data-offset="${(c * (1 - clamp01(v))).toFixed(1)}"/>`;
     return `<svg class="ring ${cls || ""}" viewBox="0 0 120 120" aria-hidden="true">
       <circle class="ring-bg" cx="60" cy="60" r="52"/>
+      ${under > 0 ? arc("ring-part", under) : ""}
       <circle class="ring-fg" cx="60" cy="60" r="52" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${c.toFixed(1)}" data-offset="${(c * (1 - clamp01(pct))).toFixed(1)}"/>
     </svg>`;
   }
   function animateRings(root) {
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      $$(".ring-fg[data-offset]", root).forEach((n) => { n.style.strokeDashoffset = n.dataset.offset; });
+      $$(".ring [data-offset]", root).forEach((n) => { n.style.strokeDashoffset = n.dataset.offset; });
       $$("[data-width]", root).forEach((n) => { n.style.width = n.dataset.width; });
     }));
   }
@@ -326,6 +329,31 @@
     btn.innerHTML = `<span class="avatar" style="--av:${avatarColor(settings.profile)}">${initial(settings.profile)}</span>`;
     btn.title = `Practicing as ${settings.profile}`;
   }
+
+  /* Profile menu: opens from the avatar, closes on avatar click, outside click, or Escape. */
+  const menuOpen = () => !$("#profile-menu").hidden;
+  function openMenu() {
+    const menu = $("#profile-menu");
+    menu.innerHTML = `
+      <p class="menu-label">Who's practicing?</p>
+      ${profiles.map((p) => `<button type="button" class="menu-item" role="menuitemradio" aria-checked="${p === settings.profile}" data-action="profile" data-name="${esc(p)}">
+        <span class="avatar avatar-sm" style="--av:${avatarColor(p)}">${initial(p)}</span><span class="menu-name">${esc(p)}</span>${p === settings.profile ? ic("check", "menu-check") : ""}
+      </button>`).join("")}
+      <button type="button" class="menu-item" role="menuitem" data-action="profile-add"><span class="avatar avatar-sm avatar-add">${ic("plus")}</span><span class="menu-name">Add a learner</span></button>
+      <hr>
+      <a class="menu-item" role="menuitem" href="#me">${ic("user")}<span class="menu-name">My info &amp; settings</span></a>`;
+    menu.hidden = false;
+    $("#avatar-btn").setAttribute("aria-expanded", "true");
+    const first = $("[aria-checked=true]", menu);
+    if (first) first.focus({ preventScroll: true });
+  }
+  function closeMenu(refocus) {
+    const menu = $("#profile-menu");
+    if (menu.hidden) return;
+    menu.hidden = true;
+    $("#avatar-btn").setAttribute("aria-expanded", "false");
+    if (refocus) $("#avatar-btn").focus({ preventScroll: true });
+  }
   function markNav(id) {
     $$("[data-view]").forEach((a) => {
       if (a.dataset.view === id) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
@@ -366,10 +394,12 @@
     const mastered = qs.filter(isMastered).length;
     const seen = qs.filter(isSeen).length;
     const missed = qs.filter(isMissed).length;
+    const once = qs.filter((q) => !isMastered(q) && stat(q).s > 0).length;
     const passes = store.get(historyKey(), []).filter((h) => h.passed).length;
     const r = rules();
     const name = displayName(settings.profile);
     const pct = qs.length ? mastered / qs.length : 0;
+    const pctOnce = qs.length ? (mastered + once) / qs.length : 0;
 
     const topics = sectionsOf(qs).map((section, i) => {
       const t = topicOf(section);
@@ -402,13 +432,18 @@
           </div>
           <div class="score-card">
             <div class="ring-wrap">
-              ${ring(pct, "ring-lg")}
+              ${ring(pct, "ring-lg", pctOnce)}
               <div class="ring-label"><strong>${mastered}</strong><span>of ${qs.length} mastered</span></div>
             </div>
             <div class="mini-stats">
               <div><strong>${seen}</strong><span>practiced</span></div>
               <div><strong>${missed}</strong><span>to review</span></div>
               <div><strong>${passes}</strong><span>tests passed</span></div>
+            </div>
+            <div class="ring-legend">
+              <span class="key key-done"><i></i><b>${mastered}</b> mastered</span>
+              <span class="key key-once"><i></i><b>${once}</b> right once</span>
+              <p>Get a question right twice in a row to master it. A miss starts it over.</p>
             </div>
           </div>
         </div>
@@ -1449,6 +1484,12 @@
   };
 
   document.addEventListener("click", (e) => {
+    if (e.target.closest("#avatar-btn")) { if (menuOpen()) closeMenu(); else openMenu(); return; }
+    if (menuOpen()) {
+      const inMenu = e.target.closest("#profile-menu");
+      closeMenu();
+      if (!inMenu) return; // a click outside only closes the menu
+    }
     const goBtn = e.target.closest("[data-go]");
     if (goBtn) { go(goBtn.dataset.go); return; }
     const el = e.target.closest("[data-action]");
@@ -1457,6 +1498,7 @@
     if (fn) fn(el, e);
   });
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && menuOpen()) { e.preventDefault(); closeMenu(true); return; }
     const el = e.target.closest && e.target.closest("[data-action=reveal]");
     if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); ACTIONS.reveal(el); }
   });
