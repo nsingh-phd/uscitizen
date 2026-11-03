@@ -469,7 +469,7 @@
 
   /* ================= Flashcards ================= */
 
-  const deck = { cards: [], i: 0, got: 0, missed: [], flipped: false, mode: "smart", section: "all", done: false };
+  const deck = { cards: [], i: 0, got: 0, missed: [], flipped: false, mode: "smart", section: "all", done: false, busy: false };
 
   function buildDeck(only) {
     if (only) return shuffle(only);
@@ -481,7 +481,7 @@
   }
   function newDeck(only) {
     deck.cards = buildDeck(only);
-    deck.i = 0; deck.got = 0; deck.missed = []; deck.flipped = false; deck.done = false;
+    deck.i = 0; deck.got = 0; deck.missed = []; deck.flipped = false; deck.done = false; deck.busy = false;
   }
 
   RENDER.cards = (view, opts) => {
@@ -577,7 +577,7 @@
 
   function flipCard() {
     const card = $("#fc");
-    if (!card) return;
+    if (!card || deck.busy) return;
     deck.flipped = !deck.flipped;
     card.classList.toggle("is-flipped", deck.flipped);
     $$("[data-action=grade]").forEach((b) => { b.disabled = !deck.flipped; });
@@ -586,10 +586,13 @@
   }
 
   function gradeCard(correct, animated) {
-    if (!deck.flipped || deck.done) return;
+    if (!deck.flipped || deck.done || (deck.busy && !animated)) return;
     const q = deck.cards[deck.i];
     const card = $("#fc");
+    deck.busy = true;
     const advance = () => {
+      deck.busy = false;
+      if (deck.cards[deck.i] !== q) return; // deck changed mid-animation
       record(q, correct);
       if (correct) deck.got++; else deck.missed.push(q);
       deck.i++;
@@ -617,8 +620,15 @@
       if (e.button !== 0 || e.target.closest("a")) return;
       x0 = e.clientX; y0 = e.clientY; dx = 0; dragging = false;
     });
+    const cancel = () => {
+      x0 = null; dragging = false;
+      card.style.transition = ""; card.style.transform = "";
+      card.style.setProperty("--sg", 0); card.style.setProperty("--sb", 0);
+    };
     card.addEventListener("pointermove", (e) => {
       if (x0 === null) return;
+      // Released outside the card without a drag: forget the stale press.
+      if (e.pointerType === "mouse" && !(e.buttons & 1)) { cancel(); return; }
       dx = e.clientX - x0;
       const dy = e.clientY - y0;
       if (!dragging && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
@@ -632,11 +642,12 @@
       card.style.setProperty("--sb", deck.flipped ? clamp01(-dx / 120) : 0);
     });
     const end = () => {
-      if (x0 === null) return;
+      if (x0 === null || deck.busy) { x0 = null; dragging = false; return; }
       const wasDrag = dragging;
       x0 = null; dragging = false;
       if (!wasDrag) { flipCard(); return; }
-      if (deck.flipped && Math.abs(dx) > 110) {
+      if (deck.flipped && !deck.busy && Math.abs(dx) > 110) {
+        deck.busy = true;
         card.style.transition = "transform .25s ease, opacity .25s ease";
         card.style.transform = `translateX(${Math.sign(dx) * 130}%) rotate(${dx / 8}deg)`;
         card.style.opacity = "0";
@@ -649,11 +660,8 @@
       }
     };
     card.addEventListener("pointerup", end);
-    card.addEventListener("pointercancel", () => {
-      x0 = null; dragging = false;
-      card.style.transition = ""; card.style.transform = "";
-      card.style.setProperty("--sg", 0); card.style.setProperty("--sb", 0);
-    });
+    card.addEventListener("pointercancel", cancel);
+    card.addEventListener("pointerleave", () => { if (!dragging) x0 = null; });
     card.addEventListener("keydown", (e) => {
       if (e.key === " " || e.key === "Enter") { e.preventDefault(); flipCard(); }
     });
@@ -1082,7 +1090,7 @@
       <div class="eng-grade">
         ${w.checked
           ? `${w.correct ? "" : `<button type="button" class="btn btn-quiet btn-lg" data-action="eng-retry">${ic("reset")}Try again</button>`}
-             <button type="button" class="btn btn-primary btn-lg" data-action="eng-next">${w.first ? "Finish round" : "Next sentence"}${ic("arrow")}</button>`
+             <button type="button" class="btn btn-primary btn-lg" data-action="eng-next">${w.first || r.results.length >= 2 ? "Finish round" : "Next sentence"}${ic("arrow")}</button>`
           : `<button type="button" class="btn btn-primary btn-lg" data-action="eng-check">${ic("check")}Check</button>`}
       </div>`;
     const input = $("#eng-input", body);
@@ -1237,6 +1245,7 @@
       if (name === DC) Object.assign(mine, DC_ANSWERS);
       else {
         Object.entries(DC_ANSWERS).forEach(([k, v]) => { if (mine[k] === v) mine[k] = ""; });
+        if (TERRITORIES.some((p) => mine.senator === `${p[0]} has no U.S. senators`)) mine.senator = "";
         if (place) mine.capital = place[1];
         if (TERRITORIES.some((p) => p[0] === name) && !mine.senator) mine.senator = `${name} has no U.S. senators`;
       }
