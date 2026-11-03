@@ -14,8 +14,7 @@
   `https://<branchname>.uscitizen.pages.dev` (e.g. https://claude-remove-learner.uscitizen.pages.dev).
   Cloudflare lowercases the branch name, turns any character other than a-z and 0-9 into "-",
   and cuts it to 28 characters, so use that form of the name in the link.
-- Merge into `dev` and `main` only when I explicitly ask. Either I run
-  `make merge-dev-to-main BRANCH=<branch>` locally, or I ask you to merge; then follow
-  the same steps as `scripts/merge_dev_to_main.sh` (work branch -> `dev` -> `main`, then sync `dev`).
+- Merge into `main` only when I explicitly ask. There is no `dev` branch: merge the work
+  branch straight into `main` (`git merge --no-ff`) and push `main`.
 - `main` deploys the live site (uscitizen.nsingh.phd) right away.
 - Answers that change after elections live in `data.js`; update `lastChecked` when you verify them.
