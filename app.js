@@ -319,7 +319,7 @@
   let current = null;
 
   function renderNav() {
-    const link = (v, short) => `<a href="#${v.id}" data-view="${v.id}">${ic(v.icon)}<span>${esc(short && v.short ? v.short : v.label)}</span></a>`;
+    const link = (v, short) => `<a href="${v.id === "home" ? "/" : "#" + v.id}" data-view="${v.id}">${ic(v.icon)}<span>${esc(short && v.short ? v.short : v.label)}</span></a>`;
     $("#tabs").innerHTML = VIEWS.filter((v) => v.id !== "me" && !v.hidden).map((v) => link(v)).join("");
     $("#bottom-nav").innerHTML = VIEWS.filter((v) => !v.hidden).map((v) => link(v, true)).join("");
     renderAvatar();
@@ -372,14 +372,20 @@
     animateRings(view);
     if (opts && opts.focus) view.focus({ preventScroll: true });
   }
+  // Home lives at the bare URL (no "#home"); every other view is a hash.
+  const viewFromUrl = () => location.hash.slice(1) || "home";
+  const homeUrl = () => location.pathname + location.search;
   function go(id, opts) {
     const o = Object.assign({ focus: true }, opts);
-    if (location.hash.slice(1) === id) { show(id, o); } else { pendingOpts = o; location.hash = id; }
+    if (viewFromUrl() === id) show(id, o);
+    else if (id === "home") { history.pushState(null, "", homeUrl()); show(id, o); }
+    else { pendingOpts = o; location.hash = id; }
     window.scrollTo({ top: 0, behavior: reduceMotion() ? "auto" : "smooth" });
   }
   let pendingOpts = null;
   function route() {
-    const id = location.hash.slice(1);
+    if (location.hash === "#home" || location.hash === "#") history.replaceState(null, "", homeUrl());
+    const id = viewFromUrl();
     const target = VIEWS.some((v) => v.id === id) ? id : "home";
     const opts = pendingOpts || { focus: current !== null };
     pendingOpts = null;
@@ -1484,6 +1490,11 @@
   };
 
   document.addEventListener("click", (e) => {
+    // Links to the bare home URL ("/") switch views in place instead of reloading the page.
+    const homeLink = e.target.closest('a[href="/"]');
+    if (homeLink && !e.defaultPrevented && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+      e.preventDefault(); closeMenu(); go("home"); return;
+    }
     if (e.target.closest("#avatar-btn")) { if (menuOpen()) closeMenu(); else openMenu(); return; }
     if (menuOpen()) {
       const inMenu = e.target.closest("#profile-menu");
@@ -1518,5 +1529,6 @@
 
   renderNav();
   window.addEventListener("hashchange", route);
+  window.addEventListener("popstate", () => { if (!location.hash && current !== "home") route(); });
   route();
 })();
