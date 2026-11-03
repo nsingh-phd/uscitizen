@@ -49,8 +49,8 @@ app.js            App logic: routing, flashcards, mock interview, study guide, E
 data.js           Civics questions and answers (2025 and 2008 versions)
 english.js        Reading and writing vocabulary and practice sentences
 fonts/            Sora (SIL Open Font License, see fonts/OFL.txt)
-scripts/          Maintenance and publishing scripts
-Makefile          `make merge-dev-to-main` shortcut
+scripts/          Maintenance, publishing, and local dev server scripts
+Makefile          `make serve` and `make merge-dev-to-main` shortcuts
 docs/             Screenshots and the social preview image
 _headers          Cloudflare Pages response headers
 ```
@@ -60,10 +60,11 @@ Plain HTML, CSS, and JavaScript: no framework, no build step, no dependencies.
 ## Run locally
 
 ```bash
-python3 -m http.server 8000
+make serve
 ```
 
-Then open http://localhost:8000/.
+Then open http://localhost:8000/. Pages have real paths (`/flashcards`, `/study-guide`, ...), so the
+local server sends every path to `index.html`, the way Cloudflare Pages does in production.
 
 ## Maintenance
 

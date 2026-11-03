@@ -1232,6 +1232,8 @@ p { margin: 0; }
 .ring-result .ring-fg { stroke: var(--good); }
 .summary .ring-label span { color: var(--ink-3); opacity: 1; }
 .summary h2, .empty h2 { font-size: 1.6rem; }
+.empty h1 { font-size: 1.8rem; margin: 0; }
+.center-facts { justify-content: center; margin-top: 1.75rem; }
 .summary p, .empty p { color: var(--ink-2); margin: 0.4rem 0 1.4rem; }
 .empty-art {
   display: inline-grid;
