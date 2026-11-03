@@ -1,9 +1,9 @@
-.PHONY: merge-dev-to-main serve
+.PHONY: merge serve
 
 # Usage: make serve [PORT=8000]
 serve:
 	python3 scripts/serve.py $(or $(PORT),8000)
 
-# Usage: make merge-dev-to-main [BRANCH=work-branch]
-merge-dev-to-main:
-	./scripts/merge_dev_to_main.sh $(BRANCH)
+# Usage: make merge BRANCH=work-branch
+merge:
+	./scripts/merge_to_main.sh $(BRANCH)

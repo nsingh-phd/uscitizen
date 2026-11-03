@@ -50,7 +50,7 @@ data.js           Civics questions and answers (2025 and 2008 versions)
 english.js        Reading and writing vocabulary and practice sentences
 fonts/            Sora (SIL Open Font License, see fonts/OFL.txt)
 scripts/          Maintenance, publishing, and local dev server scripts
-Makefile          `make serve` and `make merge-dev-to-main` shortcuts
+Makefile          `make serve` and `make merge` shortcuts
 docs/             Screenshots and the social preview image
 _headers          Cloudflare Pages response headers
 ```
@@ -80,14 +80,14 @@ local server sends every path to `index.html`, the way Cloudflare Pages does in 
 Hosted on Cloudflare Pages, connected to this repo. No build command or output directory is needed.
 
 - `main` is production: every push deploys to uscitizen.nsingh.phd.
-- `dev` and work branches get Cloudflare preview URLs.
+- Work branches get Cloudflare preview URLs at `https://<branch>.uscitizen.pages.dev`.
 - Work happens on its own branch, then is published with:
 
   ```bash
-  make merge-dev-to-main BRANCH=<work-branch>
+  make merge BRANCH=<work-branch>
   ```
 
-  This merges the work branch into `dev`, merges `dev` into `main`, pushes both, and leaves them in sync. Without `BRANCH`, it publishes whatever is already on `dev`.
+  This merges the work branch into `main` and pushes `main`.
 
 ## License
 
