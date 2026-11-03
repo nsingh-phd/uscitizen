@@ -10,6 +10,10 @@
 ## Workflow
 - Do each piece of work on its own branch (no "/" in the name) and push only that branch.
   Cloudflare builds a preview for every branch; share screenshots when the work is ready.
+- After pushing a change, always give me the clickable preview link
+  `https://<branchname>.uscitizen.pages.dev` (e.g. https://claude-remove-learner.uscitizen.pages.dev).
+  Cloudflare lowercases the branch name, turns any character other than a-z and 0-9 into "-",
+  and cuts it to 28 characters, so use that form of the name in the link.
 - Merge into `dev` and `main` only when I explicitly ask. Either I run
   `make merge-dev-to-main BRANCH=<branch>` locally, or I ask you to merge; then follow
   the same steps as `scripts/merge_dev_to_main.sh` (work branch -> `dev` -> `main`, then sync `dev`).
