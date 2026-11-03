@@ -1044,8 +1044,16 @@ p { margin: 0; }
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   box-shadow: var(--shadow-lg);
+  /* iOS Safari ignores backface-visibility for positioned or animated
+     children (the question text, the spinning hint icon), so the turned-away
+     face also gets visibility: hidden, switched halfway through the flip. */
+  transition: visibility 0s linear 0.3s;
 }
+.fc-back { visibility: hidden; }
+.fc.is-flipped .fc-front { visibility: hidden; }
+.fc.is-flipped .fc-back { visibility: visible; }
 .fc-front {
+  transform: rotateY(0deg);
   background:
     radial-gradient(400px 220px at 100% 0%, color-mix(in srgb, var(--topic) 16%, transparent), transparent 70%),
     var(--surface);
@@ -2106,5 +2114,6 @@ p { margin: 0; }
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+  .fc-face { transition-delay: 0s !important; }
   .wave-move, .twinkle, .pulse, .eq span, .float-star, .fc-hint .ic, .btn-mic.is-on, .is-glow { animation: none !important; }
 }
