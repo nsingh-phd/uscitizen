@@ -617,6 +617,10 @@ p { margin: 0; }
   letter-spacing: 0.02em;
 }
 .kicker .ic { color: var(--gold); }
+.kicker-link { color: inherit; text-decoration: none; transition: background 0.2s, border-color 0.2s; }
+.kicker-link:hover, .kicker-link:focus-visible { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.32); }
+.kicker-link .kicker-go { width: 14px; height: 14px; color: rgba(255, 255, 255, 0.7); transition: transform 0.2s var(--ease); }
+.kicker-link:hover .kicker-go { transform: translateX(2px); }
 
 .hero h1 {
   margin: 1rem 0 1.5rem;
@@ -634,6 +638,7 @@ p { margin: 0; }
 
 .hero-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; }
 .hero-hint { margin-top: 0.6rem; font-size: 0.82rem; color: rgba(255, 255, 255, 0.65); }
+.hero-hint a { color: #ffd27d; font-weight: 600; }
 
 .score-card {
   justify-self: end;
@@ -1952,6 +1957,43 @@ p { margin: 0; }
 }
 .legal-link:hover { text-decoration: underline; }
 @media (prefers-color-scheme: dark) { .legal-link, .legal-card p a, .dated-note a { color: #8fb0ff; } }
+
+/* ---------------- About the civics test ---------------- */
+.test-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.test-card {
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+  padding: 1.35rem;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  scroll-margin-top: 90px;
+  animation: rise 0.4s var(--ease) both;
+}
+.test-card p { color: var(--ink-2); font-size: 0.94rem; margin: 0; }
+.test-card p .ic { width: 15px; height: 15px; vertical-align: -2px; color: var(--gold); fill: currentColor; }
+.test-card-head { display: grid; gap: 0.25rem; }
+.test-card-head h2 { display: flex; align-items: center; gap: 0.45rem; font-size: 1.2rem; margin: 0; }
+.test-card-head h2 .ic { color: var(--gold); fill: currentColor; }
+.test-who { color: var(--ink-3); font-size: 0.88rem; font-weight: 600; }
+.test-card .rule-tiles { margin: 0; }
+.test-card .rule-tile { background: var(--bg); box-shadow: none; padding: 0.8rem 0.4rem; text-align: center; }
+.test-card .btn { justify-self: start; }
+.test-card-65 {
+  margin-bottom: 1rem;
+  border: 2px solid color-mix(in srgb, var(--gold) 55%, var(--line));
+  background:
+    radial-gradient(500px 220px at 100% 0%, color-mix(in srgb, var(--gold) 14%, transparent), transparent 70%),
+    var(--surface);
+}
+.row-start { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 
 .source-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 .source-list li {

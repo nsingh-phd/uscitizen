@@ -14,6 +14,7 @@ A free, private study app for the U.S. naturalization test: every official USCIS
 - **Reading practice.** Rounds of up to 3 sentences, passing on the first one read correctly. Optional speech check highlights which words were heard.
 - **Writing practice.** The app dictates a sentence, you type it, and you get word-by-word feedback.
 - **Study guide.** Search, topic filters, and a "quiz me" mode that blurs answers until tapped.
+- **About the civics test.** A plain-language page on the 2025 and 2008 rules, the 65/20 special consideration, exemptions, and links to every official USCIS source.
 - **Your local answers.** Senators, representative, governor, and state capital are entered once and appear wherever those questions do.
 - **Several learners on one device,** each with their own progress.
 - Light and dark themes, phone-friendly layout, keyboard shortcuts, and reduced-motion support.
