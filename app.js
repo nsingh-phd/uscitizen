@@ -1394,6 +1394,7 @@
 
       <section class="block danger">
         <button type="button" class="btn btn-quiet" data-action="reset">${ic("reset")}Reset ${esc(settings.version)} progress for ${esc(settings.profile)}</button>
+        <button type="button" class="btn btn-quiet" data-action="profile-remove">${ic("x")}Remove ${esc(settings.profile)}</button>
       </section>`;
 
     $("#mine-state", view).addEventListener("change", (e) => {
@@ -1516,6 +1517,14 @@
     "eng-next"() { engResult(curRound().w.first === true); },
     "eng-round"() { newRound(eng.mode); renderEngBody(); },
     "eng-word"(btn) { speak(btn.dataset.word, null, 0.8); },
+    "profile-remove"() {
+      const name = settings.profile;
+      const last = profiles.length === 1;
+      if (!window.confirm(last
+        ? `Remove ${name}? All of ${name}'s progress, test history, and saved info on this device will be deleted, and a fresh "Me" learner will be started.`
+        : `Remove ${name}? All of ${name}'s progress, test history, and saved info on this device will be deleted.`)) return;
+      removeProfile(name);
+    },
     reset() {
       if (!window.confirm(`Reset ${settings.version} test progress, interview history, and reading/writing results for ${settings.profile}?`)) return;
       store.remove(progressKey()); store.remove(historyKey()); store.remove(engKey()); eng.round = {}; reload();
@@ -1556,6 +1565,15 @@
     if (!profiles.includes(name)) profiles.push(name);
     store.set("usc:profiles", profiles);
     switchProfile(name);
+  }
+  function removeProfile(name) {
+    Object.keys(DATA).forEach((v) => { store.remove(`usc:progress:${name}:${v}`); store.remove(`usc:tests:${name}:${v}`); });
+    store.remove(`usc:local:${name}`); store.remove(`usc:english:${name}`);
+    profiles = profiles.filter((p) => p !== name);
+    if (!profiles.length) profiles = ["Me"];
+    store.set("usc:profiles", profiles);
+    switchProfile(profiles[0]);
+    announce(`Removed ${name}`);
   }
   $("#profile-form").addEventListener("submit", (e) => {
     const name = (new FormData(e.target).get("name") || "").toString().trim().slice(0, 24);

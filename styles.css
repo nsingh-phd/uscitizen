@@ -1641,7 +1641,7 @@ p { margin: 0; }
 .official-name { font-family: var(--font-display); font-size: 1.3rem; line-height: 1.2; }
 .official-alt { font-size: 0.78rem; opacity: 0.7; }
 
-.danger { padding-top: 1.5rem; border-top: 1px solid var(--line); }
+.danger { padding-top: 1.5rem; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 0.75rem; }
 
 /* ---------------- Home: English card ---------------- */
 .action-english .action-art { background: linear-gradient(135deg, #fff2d6, #fde2e0); }
